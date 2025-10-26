@@ -84,6 +84,7 @@ See `requirements.txt` for the full list. Key packages:
 - numpy
 - scikit-learn
 - wordcloud
+- Tf/Idf Vector
 - emoji
 
 ---
