@@ -302,7 +302,7 @@ def plot_sentiment_timeline(sentiment_df, selected_user):
     # Plot 1: Polarity over time
     ax1.plot(daily_sentiment['only_date'], daily_sentiment['polarity'], 
              color='blue', marker='o', linewidth=2)
-    ax1.axhline(y=0, color='gray', linestyle='--', alpha=0.7)
+    ax1.axhline(y=0, color='white', linestyle='--', alpha=0.7)
     ax1.set_title(f'ML Sentiment Polarity Timeline - {selected_user}', fontsize=14)
     ax1.set_ylabel('Polarity (-1 to 1)')
     ax1.grid(True, alpha=0.3)
@@ -334,7 +334,7 @@ def plot_danger_analysis(sentiment_df):
     colors = ['lightgreen', 'red']
     
     ax1.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
-        if dangerous_count > 0:
+    if dangerous_count > 0:
         danger_scores = sentiment_df[sentiment_df['is_dangerous']]['danger_score']
         ax2.hist(danger_scores, bins=range(1, max(danger_scores)+2), 
                 color='red', alpha=0.7, edgecolor='black')

@@ -1,256 +1,209 @@
 import streamlit as st
-import preprocessor,helper
-import sentiment
+import preprocessor, helper, sentiment
 import matplotlib.pyplot as plt
 import seaborn as sns
 from emoji import EMOJI_DATA
+import plotly.express as px
+import plotly.graph_objects as go
 
-st.sidebar.title("Whatsapp Chat Analyzer")
+# ----------------------
+# Page Config
+# ----------------------
+st.set_page_config(page_title="📊 WhatsApp Chat Analyzer",
+                   layout="wide", page_icon="💬")
 
-uploaded_file = st.sidebar.file_uploader("Choose a file")
+sns.set_theme(style="whitegrid")
+
+# ----------------------
+# Logo & Title
+# ----------------------
+st.image("logo.png", width=120)  # Add your logo here
+st.title("WhatsApp Chat Analyzer")
+st.markdown("Deep Insights into Your WhatsApp Chats 💡")
+
+# ----------------------
+# Sidebar
+# ----------------------
+st.sidebar.header("Upload & Analyze Chat")
+uploaded_file = st.sidebar.file_uploader("Choose WhatsApp chat file", type=["txt"])
+selected_user = None
+
 if uploaded_file is not None:
     bytes_data = uploaded_file.getvalue()
     data = bytes_data.decode("utf-8")
     df = preprocessor.preprocess(data)
 
-    # fetch unique users
+    # User Selection
     user_list = df['user'].unique().tolist()
     if 'group_notification' in user_list:
         user_list.remove('group_notification')
     user_list.sort()
-    user_list.insert(0,"Overall")
+    user_list.insert(0, "Overall")
 
-    selected_user = st.sidebar.selectbox("Show analysis wrt",user_list)
+    selected_user = st.sidebar.selectbox("Select User for Analysis", user_list)
+    show_analysis = st.sidebar.button("🔍 Show Analysis")
 
-    if st.sidebar.button("Show Analysis"):
+    # Sidebar Summary Cards
+    total_messages, total_words, total_media, total_links = helper.fetch_stats("Overall", df)
+    st.sidebar.markdown("### 📊 File Summary")
+    st.sidebar.metric("Messages", total_messages, "✉️")
+    st.sidebar.metric("Words", total_words, "📝")
+    st.sidebar.metric("Media", total_media, "📷")
+    st.sidebar.metric("Links", total_links, "🔗")
+else:
+    show_analysis = False
 
-        # Stats Area
-        num_messages, words, num_media_messages, num_links = helper.fetch_stats(selected_user,df)
-        st.title("Top Statistics")
+# ----------------------
+# Analysis Tabs
+# ----------------------
+if uploaded_file is not None and show_analysis:
+
+    tabs = st.tabs([
+        "📄 File Review", "📊 Stats", "📅 Timelines", 
+        "📈 Activity", "💬 Wordcloud & Words", "😊 Emoji", "🧠 Sentiment"
+    ])
+
+    # ----------------------
+    # Tab 1: File Review
+    # ----------------------
+    with tabs[0]:
+        st.header("📄 File Review")
+        st.write(f"**File Name:** {uploaded_file.name}")
+        st.write(f"**File Size:** {len(bytes_data)/1024:.2f} KB")
+        st.write(f"**Total Messages:** {df.shape[0]}")
+        st.subheader("Preview (First 5 Messages)")
+        st.dataframe(df.head(5), use_container_width=True)
+
+    # ----------------------
+    # Tab 2: Stats
+    # ----------------------
+    with tabs[1]:
+        st.header("📊 Key Metrics")
+        num_messages, words, num_media_messages, num_links = helper.fetch_stats(selected_user, df)
         col1, col2, col3, col4 = st.columns(4)
+        col1.metric("Messages", num_messages, "✉️")
+        col2.metric("Words", words, "📝")
+        col3.metric("Media Shared", num_media_messages, "📷")
+        col4.metric("Links Shared", num_links, "🔗")
 
+    # ----------------------
+    # Tab 3: Timelines
+    # ----------------------
+    with tabs[2]:
+        st.header("📅 Timeline Analysis")
+        monthly = helper.monthly_timeline(selected_user, df)
+        daily = helper.daily_timeline(selected_user, df)
+
+        # Interactive Plotly Monthly Timeline
+        fig_month = px.line(monthly, x='time', y='message', markers=True, title="Monthly Timeline")
+        st.plotly_chart(fig_month, use_container_width=True)
+
+        # Interactive Plotly Daily Timeline
+        fig_day = px.line(daily, x='only_date', y='message', markers=True, title="Daily Timeline")
+        st.plotly_chart(fig_day, use_container_width=True)
+
+    # ----------------------
+    # Tab 4: Activity
+    # ----------------------
+    with tabs[3]:
+        st.header("📈 Activity Analysis")
+        busy_day = helper.week_activity_map(selected_user, df)
+        busy_month = helper.month_activity_map(selected_user, df)
+        user_heatmap = helper.activity_heatmap(selected_user, df)
+
+        col1, col2 = st.columns(2)
         with col1:
-            st.header("Total Messages")
-            st.title(num_messages)
-            
+            fig = px.bar(x=busy_day.index, y=busy_day.values, title="Most Busy Day", color=busy_day.values, color_continuous_scale='Viridis')
+            st.plotly_chart(fig, use_container_width=True)
         with col2:
-            st.header("Total Words")
-            st.title(words)
-        with col3:
-            st.header("Media Shared")
-            st.title(num_media_messages)
-        with col4:
-            st.header("Links Shared")
-            st.title(num_links)
+            fig = px.bar(x=busy_month.index, y=busy_month.values, title="Most Busy Month", color=busy_month.values, color_continuous_scale='Plasma')
+            st.plotly_chart(fig, use_container_width=True)
 
-        # monthly timeline
-        st.title("Monthly Timeline")
-        timeline = helper.monthly_timeline(selected_user,df)
-        fig,ax = plt.subplots()
-        ax.plot(timeline['time'], timeline['message'],color='green')
-        plt.xticks(rotation='vertical')
-        st.pyplot(fig)
-
-        # daily timeline
-        st.title("Daily Timeline")
-        daily_timeline = helper.daily_timeline(selected_user, df)
-        fig, ax = plt.subplots()
-        ax.plot(daily_timeline['only_date'], daily_timeline['message'], color='black')
-        plt.xticks(rotation='vertical')
-        st.pyplot(fig)
-
-        # activity map
-        st.title('Activity Map')
-        col1,col2 = st.columns(2)
-
-        with col1:
-            st.header("Most busy day")
-            busy_day = helper.week_activity_map(selected_user,df)
-            fig,ax = plt.subplots()
-            ax.bar(busy_day.index,busy_day.values,color='purple')
-            plt.xticks(rotation='vertical')
-            st.pyplot(fig)
-
-        with col2:
-            st.header("Most busy month")
-            busy_month = helper.month_activity_map(selected_user, df)
-            fig, ax = plt.subplots()
-            ax.bar(busy_month.index, busy_month.values,color='orange')
-            plt.xticks(rotation='vertical')
-            st.pyplot(fig)
-
-        st.title("Weekly Activity Map")
-        user_heatmap = helper.activity_heatmap(selected_user,df)
+        st.subheader("Weekly Heatmap")
         if user_heatmap is not None and not user_heatmap.empty:
-            fig,ax = plt.subplots()
-            ax = sns.heatmap(user_heatmap)
+            fig, ax = plt.subplots(figsize=(12,5))
+            sns.heatmap(user_heatmap, cmap="YlGnBu", linewidths=.5, ax=ax)
             st.pyplot(fig)
         else:
-            st.info("Not enough data to display the activity heatmap.")
+            st.info("Not enough data for heatmap.")
 
-        # finding the busiest users in the group(Group level)
-        if selected_user == 'Overall':
-            st.title('Most Busy Users')
-            x,new_df = helper.most_busy_users(df)
-            fig, ax = plt.subplots()
-
-            col1, col2 = st.columns(2)
-
-            with col1:
-                ax.bar(x.index, x.values,color='red')
-                plt.xticks(rotation='vertical')
-                st.pyplot(fig)
-            with col2:
-                st.dataframe(new_df)
-
-        # WordCloud
-        st.title("Wordcloud")
-        df_wc = helper.create_wordcloud(selected_user,df)
+    # ----------------------
+    # Tab 5: Wordcloud & Common Words
+    # ----------------------
+    with tabs[4]:
+        st.header("💬 Wordcloud & Most Common Words")
+        df_wc = helper.create_wordcloud(selected_user, df)
         if df_wc is not None:
-            fig,ax = plt.subplots()
+            fig, ax = plt.subplots(figsize=(10,6))
             ax.imshow(df_wc)
+            ax.axis('off')
             st.pyplot(fig)
         else:
-            st.info("Not enough words to generate a word cloud.")
+            st.info("Not enough words for wordcloud.")
 
+        most_common_df = helper.most_common_words(selected_user, df)
+        fig = px.bar(most_common_df, x=1, y=0, orientation='h', title="Most Common Words", color=1, color_continuous_scale='Blues')
+        st.plotly_chart(fig, use_container_width=True)
 
-        # most common words
-        most_common_df = helper.most_common_words(selected_user,df)
-
-        fig,ax = plt.subplots()
-
-        ax.barh(most_common_df[0],most_common_df[1])
-        plt.xticks(rotation='vertical')
-
-        st.title('Most commmon words')
-        st.pyplot(fig)
-
-        # emoji analysis
-        emoji_df = helper.emoji_helper(selected_user,df)
-        st.title("Emoji Analysis")
-
-        col1,col2 = st.columns(2)
-
+    # ----------------------
+    # Tab 6: Emoji
+    # ----------------------
+    with tabs[5]:
+        st.header("😊 Emoji Analysis")
+        emoji_df = helper.emoji_helper(selected_user, df)
+        col1, col2 = st.columns(2)
         with col1:
             st.dataframe(emoji_df)
         with col2:
-            fig,ax = plt.subplots()
-            ax.pie(emoji_df[1].head(),labels=emoji_df[0].head(),autopct="%0.2f")
-            st.pyplot(fig)
+            fig = px.pie(emoji_df.head(), values=1, names=0, title="Top Emojis")
+            st.plotly_chart(fig, use_container_width=True)
 
-        # Extracting and displaying emojis from messages
-        st.title("Emoji Extractor")
-        if selected_user == 'Overall':
-            st.warning("Emoji extraction is not available for overall data.")
+        if selected_user != "Overall":
+            messages = df[df['user']==selected_user]['message']
+            emojis = [c for msg in messages for c in msg if c in EMOJI_DATA]
+            st.write(" ".join(emojis) if emojis else "No emojis found.")
         else:
-            message = df[df['user'] == selected_user]['message']
-            emojis = []
-            for msg in message:
-                emojis.extend([c for c in msg if c in EMOJI_DATA])
-            
-            if emojis:
-                st.write(" ".join(emojis))
-            else:
-                st.info("No emojis found in the selected user's messages.")
+            st.warning("Emoji extraction not available for Overall.")
 
-        # Sentiment Analysis Section
-        st.title("📊 Sentiment Analysis")
-        
-        # Perform sentiment analysis
+    # ----------------------
+    # Tab 7: Sentiment
+    # ----------------------
+    with tabs[6]:
+        st.header("🧠 Sentiment Analysis")
         sentiment_df = sentiment.comprehensive_sentiment_analysis(selected_user, df)
-        
         if sentiment_df is not None and not sentiment_df.empty:
-            # Get sentiment summary
             summary = sentiment.get_sentiment_summary(sentiment_df)
-            
-            if summary:
-                # Display sentiment metrics
-                st.subheader("Sentiment Overview")
-                col1, col2, col3, col4 = st.columns(4)
-                
-                with col1:
-                    st.metric("Positive Messages", summary['positive_messages'])
-                with col2:
-                    st.metric("Negative Messages", summary['negative_messages'])
-                with col3:
-                    st.metric("Neutral Messages", summary['neutral_messages'])
-                with col4:
-                    st.metric("Avg Polarity", f"{summary['avg_polarity']:.3f}")
-                
-                # Add confidence metrics
-                confidence_analysis = sentiment.get_confidence_analysis(sentiment_df)
-                if confidence_analysis:
-                    st.subheader("🤖 ML Model Confidence")
-                    col1, col2, col3, col4 = st.columns(4)
-                    
-                    with col1:
-                        st.metric("Avg Confidence", f"{confidence_analysis['avg_confidence']:.3f}")
-                    with col2:
-                        st.metric("High Confidence", confidence_analysis['high_confidence'])
-                    with col3:
-                        st.metric("Medium Confidence", confidence_analysis['medium_confidence'])
-                    with col4:
-                        st.metric("Low Confidence", confidence_analysis['low_confidence'])
-                
-                # Risk assessment
-                st.subheader("🔍 Safety Analysis")
-                col1, col2 = st.columns(2)
-                
-                with col1:
-                    st.metric("Dangerous Messages", summary['dangerous_messages'])
-                with col2:
-                    risk_color = "red" if summary['risk_level'] == "HIGH RISK" else "orange" if summary['risk_level'] == "MEDIUM RISK" else "green"
-                    st.markdown(f"**Risk Level:** <span style='color: {risk_color}'>{summary['risk_level']}</span>", unsafe_allow_html=True)
-                
-                # Sentiment timeline
-                st.subheader("📈 Sentiment Timeline")
-                timeline_fig = sentiment.plot_sentiment_timeline(sentiment_df, selected_user)
-                if timeline_fig:
-                    st.pyplot(timeline_fig)
-                
-                # Danger analysis
-                st.subheader("⚠️ Safety Analysis")
-                danger_fig = sentiment.plot_danger_analysis(sentiment_df)
-                if danger_fig:
-                    st.pyplot(danger_fig)
-                
-                # Most dangerous messages
-                dangerous_messages = sentiment.get_dangerous_messages(sentiment_df, limit=5)
-                if not dangerous_messages.empty:
-                    st.subheader("🚨 Potentially Concerning Messages")
+            col1, col2, col3, col4 = st.columns(4)
+            col1.metric("Positive", summary['positive_messages'])
+            col2.metric("Negative", summary['negative_messages'])
+            col3.metric("Neutral", summary['neutral_messages'])
+            col4.metric("Avg Polarity", f"{summary['avg_polarity']:.3f}")
+
+            # Sentiment Timeline
+            fig = sentiment.plot_sentiment_timeline(sentiment_df, selected_user)
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+
+            # Dangerous Messages
+            dangerous_messages = sentiment.get_dangerous_messages(sentiment_df, limit=10)
+            if not dangerous_messages.empty:
+                with st.expander("🚨 Potentially Concerning Messages (Click to Expand)"):
                     st.dataframe(dangerous_messages, use_container_width=True)
-                else:
-                    st.success("✅ No concerning messages detected!")
-                
-                # Keyword analysis
-                st.subheader("🔤 Keyword Analysis by Sentiment")
-                keyword_analysis = sentiment.get_keyword_analysis(sentiment_df)
-                
-                if keyword_analysis:
-                    col1, col2, col3 = st.columns(3)
-                    
-                    with col1:
-                        st.write("**Positive Keywords:**")
-                        if keyword_analysis.get('positive'):
-                            for word, count in keyword_analysis['positive'][:5]:
-                                st.write(f"• {word} ({count})")
+            else:
+                st.success("✅ No concerning messages detected!")
+
+            # Keyword Analysis
+            keywords = sentiment.get_keyword_analysis(sentiment_df)
+            if keywords:
+                with st.expander("🔤 Keyword Analysis by Sentiment"):
+                    cols = st.columns(3)
+                    sentiments = ['positive','negative','neutral']
+                    for i, s in enumerate(sentiments):
+                        cols[i].write(f"**{s.capitalize()} Keywords:**")
+                        if keywords.get(s):
+                            for word, count in keywords[s][:10]:
+                                cols[i].write(f"• {word} ({count})")
                         else:
-                            st.write("No positive keywords found")
-                    
-                    with col2:
-                        st.write("**Negative Keywords:**")
-                        if keyword_analysis.get('negative'):
-                            for word, count in keyword_analysis['negative'][:5]:
-                                st.write(f"• {word} ({count})")
-                        else:
-                            st.write("No negative keywords found")
-                    
-                    with col3:
-                        st.write("**Neutral Keywords:**")
-                        if keyword_analysis.get('neutral'):
-                            for word, count in keyword_analysis['neutral'][:5]:
-                                st.write(f"• {word} ({count})")
-                        else:
-                            st.write("No neutral keywords found")
+                            cols[i].write("No keywords found")
         else:
-            st.warning("⚠️ Not enough data available for sentiment analysis. Please ensure your chat file contains text messages.")
+            st.warning("Not enough data for sentiment analysis.")
